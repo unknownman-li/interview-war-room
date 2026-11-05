@@ -7,12 +7,16 @@
   var LS_MASTER = 'interview.mastered.v1';
   var LS_THEME = 'interview.theme.v2';
   var LS_BEST = 'interview.quiz.best.v1';
+  var LS_ANSWERS = 'interview.answers.v1';
 
   var state = {
     mastered: loadSet(LS_MASTER),
+    answers: loadAnswers(),
     query: '',
     theme: localStorage.getItem(LS_THEME) || 'light',
-    quiz: null
+    quiz: null,
+    editor: null,
+    randomPick: null
   };
 
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
@@ -26,6 +30,47 @@
   }
   function saveMastered() {
     try { localStorage.setItem(LS_MASTER, JSON.stringify(Array.from(state.mastered))); } catch (e) {}
+  }
+
+  /* ---------------- 答案覆盖（只存本地浏览器） ---------------- */
+  function loadAnswers() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(LS_ANSWERS) || '{}');
+      if (raw && raw.answers && typeof raw.answers === 'object') raw = raw.answers;
+      var out = {};
+      if (!raw || typeof raw !== 'object') return out;
+      Object.keys(raw).forEach(function (key) {
+        var v = raw[key];
+        if (typeof v === 'string') {
+          out[key] = { html: v, updatedAt: null };
+        } else if (v && typeof v.html === 'string') {
+          out[key] = { html: v.html, updatedAt: v.updatedAt || null };
+        }
+      });
+      return out;
+    } catch (e) { return {}; }
+  }
+
+  function saveAnswers() {
+    try {
+      localStorage.setItem(LS_ANSWERS, JSON.stringify({
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        answers: state.answers
+      }));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* 用户答案只在本机渲染，仍然做一层过滤，避免导入的备份里带脚本 */
+  function sanitizeHtml(html) {
+    var s = String(html == null ? '' : html);
+    s = s.replace(/<\s*(script|style|iframe|object|embed|link|meta|base|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
+    s = s.replace(/<\s*\/?\s*(script|style|iframe|object|embed|link|meta|base|form)\b[^>]*>/gi, '');
+    s = s.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    s = s.replace(/\b(href|src|xlink:href)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, '$1="#"');
+    s = s.replace(/\b(href|src|xlink:href)\s*=\s*javascript:[^\s>]+/gi, '$1="#"');
+    return s;
   }
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -48,6 +93,47 @@
   function modById(id) {
     for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === id) return MODULES[i];
     return null;
+  }
+
+  /* 用「模块 id + 题目原文」做 key：以后在模块中间加题也不会错位 */
+  function answerKey(m, it) { return m.id + '::' + it.q; }
+  function hasCustomAnswer(m, it) {
+    var rec = state.answers[answerKey(m, it)];
+    return !!(rec && typeof rec.html === 'string' && rec.html.trim());
+  }
+  function getAnswerHtml(m, it) {
+    if (!hasCustomAnswer(m, it)) return it.a || '';
+    return sanitizeHtml(state.answers[answerKey(m, it)].html);
+  }
+  function customCount() {
+    var n = 0;
+    MODULES.forEach(function (m) {
+      m.items.forEach(function (it) { if (hasCustomAnswer(m, it)) n++; });
+    });
+    return n;
+  }
+  function editedTagHtml(m, it) {
+    return hasCustomAnswer(m, it) ? '<span class="edited-tag" title="这道题的答案已被你修改">已修改</span>' : '';
+  }
+  function answerToolsHtml(m, i, it) {
+    var mine = hasCustomAnswer(m, it);
+    return '<div class="answer-tools">' +
+      '<button type="button" class="btn small ghost" data-edit-mod="' + esc(m.id) + '" data-edit-idx="' + i + '">✎ 编辑答案</button>' +
+      (mine
+        ? '<button type="button" class="btn small ghost" data-restore-mod="' + esc(m.id) + '" data-restore-idx="' + i + '">↺ 恢复原答案</button>' +
+          '<span class="answer-state mine">已保存我的版本</span>'
+        : '<span class="answer-state">答案保存在本地浏览器</span>') +
+      '</div>';
+  }
+  function renderAnswerInner(m, it, i) {
+    return '<div class="answer-content">' + getAnswerHtml(m, it) + '</div>' + answerToolsHtml(m, i, it);
+  }
+  function pickByRef(modId, idx) {
+    var m = modById(modId);
+    if (!m) return null;
+    var i = Number(idx);
+    if (!isFinite(i) || i < 0 || i >= m.items.length) return null;
+    return { m: m, it: m.items[i], i: i };
   }
 
   /* ---------------- 主题 ---------------- */
@@ -226,15 +312,15 @@
   function renderQCard(m, it, i) {
     var key = itemKey(m, i);
     var isDone = state.mastered.has(key);
-    return '<article class="qcard' + (isDone ? ' mastered' : '') + '" data-key="' + key + '">' +
+    return '<article class="qcard' + (isDone ? ' mastered' : '') + '" data-key="' + key + '" data-mod="' + esc(m.id) + '" data-idx="' + i + '">' +
       '<div class="qhead" role="button" tabindex="0" aria-expanded="false">' +
       '<span class="qnum">' + String(i + 1).padStart(2, '0') + '</span>' +
-      '<span class="qtitle">' + it.q + '</span>' +
+      '<span class="qtitle">' + it.q + editedTagHtml(m, it) + '</span>' +
       starHtml(it.star || 3) +
       '<span class="master-btn" role="button" tabindex="0" data-master="' + key + '">' + (isDone ? '已掌握' : '标记掌握') + '</span>' +
       '<span class="chev">▾</span>' +
       '</div>' +
-      '<div class="qbody">' + it.a + '</div>' +
+      '<div class="qbody">' + renderAnswerInner(m, it, i) + '</div>' +
       '</article>';
   }
 
@@ -253,7 +339,7 @@
     MODULES.forEach(function (m) {
       var hits = [];
       m.items.forEach(function (it, i) {
-        var hay = (it.q + ' ' + strip(it.a)).toLowerCase();
+        var hay = (it.q + ' ' + strip(getAnswerHtml(m, it))).toLowerCase();
         if (terms.every(function (t) { return hay.indexOf(t) >= 0; })) {
           hits.push({ it: it, i: i });
         }
@@ -270,20 +356,20 @@
       groups.forEach(function (g) {
         h += '<section class="section" style="margin-top:26px"><div class="section-head"><h2><a href="#/m/' + g.m.id + '">' + g.m.icon + ' ' + esc(g.m.title) + ' →</a></h2><span class="count" style="font-size:11px;color:var(--muted)">' + g.hits.length + ' 条</span><div class="line"></div></div><div class="qlist">';
         g.hits.forEach(function (hit) {
-          var plain = strip(hit.it.a);
+          var plain = strip(getAnswerHtml(g.m, hit.it));
           var low = plain.toLowerCase();
           var pos = low.indexOf(terms[0]);
           var start = Math.max(0, pos - 40);
           var snippet = plain.slice(start, start + 110);
           if (start > 0) snippet = '…' + snippet;
           if (start + 110 < plain.length) snippet += '…';
-          h += '<article class="qcard" data-key="' + itemKey(g.m, hit.i) + '">' +
+          h += '<article class="qcard" data-key="' + itemKey(g.m, hit.i) + '" data-mod="' + esc(g.m.id) + '" data-idx="' + hit.i + '">' +
             '<div class="qhead" role="button" tabindex="0" aria-expanded="false"><span class="qnum">' + String(hit.i + 1).padStart(2, '0') + '</span>' +
-            '<span class="qtitle">' + highlight(hit.it.q, q) + '<span style="display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:3px">' + highlight(snippet, q) + '</span></span>' +
+            '<span class="qtitle">' + highlight(hit.it.q, q) + editedTagHtml(g.m, hit.it) + '<span style="display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:3px">' + highlight(snippet, q) + '</span></span>' +
             starHtml(hit.it.star || 3) +
             '<span class="master-btn" role="button" tabindex="0" data-master="' + itemKey(g.m, hit.i) + '">' + (state.mastered.has(itemKey(g.m, hit.i)) ? '已掌握' : '标记掌握') + '</span>' +
             '<span class="chev">▾</span></div>' +
-            '<div class="qbody">' + hit.it.a + '</div></article>';
+            '<div class="qbody">' + renderAnswerInner(g.m, hit.it, hit.i) + '</div></article>';
         });
         h += '</div></section>';
       });
@@ -388,20 +474,354 @@
     var all = [];
     MODULES.forEach(function (m) { m.items.forEach(function (it, i) { all.push({ m: m, it: it, i: i }); }); });
     if (!all.length) return;
-    var pick = all[Math.floor(Math.random() * all.length)];
-    $('#randomBody').innerHTML = '<div class="meta-line">' + pick.m.icon + ' ' + esc(pick.m.title) + ' · 第 ' + (pick.i + 1) + ' 题</div>' +
-      '<h3>' + pick.it.q + '</h3><div class="qbody">' + pick.it.a + '</div>';
-    $('#randomModal').classList.add('show');
-    $('#randomModal').setAttribute('aria-hidden', 'false');
+    state.randomPick = all[Math.floor(Math.random() * all.length)];
+    renderRandomContent();
+    showModal('randomModal');
+  }
+  function renderRandomContent() {
+    var pick = state.randomPick;
+    if (!pick) return;
+    $('#randomBody').innerHTML = '<div class="meta-line">' + pick.m.icon + ' ' + esc(pick.m.title) + ' · 第 ' + (pick.i + 1) + ' 题' + editedTagHtml(pick.m, pick.it) + '</div>' +
+      '<h3>' + pick.it.q + '</h3>' +
+      '<div class="qbody">' + getAnswerHtml(pick.m, pick.it) + '</div>' +
+      answerToolsHtml(pick.m, pick.i, pick.it);
+  }
+  function showModal(id) {
+    var el = $('#' + id);
+    if (!el) return;
+    el.classList.add('show');
+    el.setAttribute('aria-hidden', 'false');
+  }
+  function hideModal(id) {
+    var el = $('#' + id);
+    if (!el) return;
+    el.classList.remove('show');
+    el.setAttribute('aria-hidden', 'true');
   }
   $('#randomBtn').addEventListener('click', openRandom);
   $('#anotherBtn').addEventListener('click', openRandom);
   $('#closeRandom').addEventListener('click', closeRandom);
   function closeRandom() {
-    $('#randomModal').classList.remove('show');
-    $('#randomModal').setAttribute('aria-hidden', 'true');
+    hideModal('randomModal');
   }
   $('#randomModal').addEventListener('click', function (e) { if (e.target === $('#randomModal')) closeRandom(); });
+
+  /* ---------------- 答案编辑 ---------------- */
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $('#toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  function openEditor(modId, idx) {
+    var p = pickByRef(modId, idx);
+    if (!p) return;
+    state.editor = p;
+    var mine = hasCustomAnswer(p.m, p.it);
+    var key = answerKey(p.m, p.it);
+    $('#answerMeta').innerHTML = '<span class="pill">' + esc(p.m.title) + '</span><span class="editor-q">' + p.it.q + '</span>';
+    $('#answerInput').value = mine ? state.answers[key].html : (p.it.a || '');
+    setEditorStatus(mine ? '当前显示：我的版本（已保存）' : '当前显示：原始答案', false);
+    updateAnswerPreview();
+    showModal('answerModal');
+    setTimeout(function () {
+      var ta = $('#answerInput');
+      ta.focus();
+      ta.setSelectionRange(0, 0);
+      ta.scrollTop = 0;
+    }, 30);
+  }
+
+  function closeEditor() {
+    hideModal('answerModal');
+    state.editor = null;
+  }
+
+  function setEditorStatus(msg, isError) {
+    var el = $('#answerStatus');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'editor-status' + (isError ? ' error' : '');
+  }
+
+  function updateAnswerPreview() {
+    var raw = $('#answerInput') ? $('#answerInput').value : '';
+    var clean = sanitizeHtml(raw);
+    $('#answerPreview').innerHTML = clean.trim() ? clean : '<p class="editor-placeholder">在左侧输入内容，这里会实时预览。</p>';
+    var count = $('#answerCount');
+    if (count) count.textContent = raw.length + ' 字符';
+  }
+
+  function insertSnippet(type) {
+    var ta = $('#answerInput');
+    if (!ta) return;
+    var start = ta.selectionStart;
+    var end = ta.selectionEnd;
+    var sel = ta.value.slice(start, end);
+    var before = '';
+    var after = '';
+    var placeholder = '内容';
+    if (type === 'bold') { before = '<strong>'; after = '</strong>'; }
+    else if (type === 'code') { before = '<code>'; after = '</code>'; placeholder = '代码'; }
+    else if (type === 'pre') { before = '<pre><code>'; after = '</code></pre>'; placeholder = '代码块'; }
+    else if (type === 'list') { before = '<ul>\n  <li>'; after = '</li>\n</ul>'; placeholder = '要点'; }
+    else if (type === 'quote') { before = '<blockquote class="tip">'; after = '</blockquote>'; placeholder = '提示内容'; }
+    var text = sel || placeholder;
+    ta.value = ta.value.slice(0, start) + before + text + after + ta.value.slice(end);
+    var caret = start + before.length + text.length;
+    ta.focus();
+    ta.setSelectionRange(caret, caret);
+    updateAnswerPreview();
+  }
+
+  function saveAnswerFromEditor() {
+    var p = state.editor;
+    if (!p) return;
+    var val = $('#answerInput').value.trim();
+    if (!val) {
+      setEditorStatus('内容不能为空。如果要恢复原始答案，请点「恢复原答案」。', true);
+      return;
+    }
+    var clean = sanitizeHtml(val).trim();
+    var key = answerKey(p.m, p.it);
+    var m = p.m;
+    var it = p.it;
+    var i = p.i;
+    var prev = state.answers[key];
+
+    if (clean === String(it.a || '').trim()) {
+      delete state.answers[key];
+    } else {
+      state.answers[key] = { html: clean, updatedAt: new Date().toISOString() };
+    }
+    if (!saveAnswers()) {
+      if (prev) state.answers[key] = prev; else delete state.answers[key];
+      setEditorStatus('保存失败：浏览器本地存储空间不足或被禁用。', true);
+      return;
+    }
+    closeEditor();
+    syncAfterAnswerChange(m, it, i);
+    updateDataCount();
+    toast(hasCustomAnswer(m, it) ? '答案已保存到本地' : '内容与原始答案一致，已恢复原文');
+  }
+
+  function restoreFromEditor() {
+    var p = state.editor;
+    if (!p) return;
+    if (!confirm('恢复这道题的原始答案？你保存的修改将被删除。')) return;
+    var m = p.m;
+    var it = p.it;
+    var i = p.i;
+    var key = answerKey(m, it);
+    var prev = state.answers[key];
+    delete state.answers[key];
+    if (!saveAnswers()) {
+      if (prev) state.answers[key] = prev;
+      setEditorStatus('恢复失败：浏览器本地存储不可用。', true);
+      return;
+    }
+    closeEditor();
+    syncAfterAnswerChange(m, it, i);
+    updateDataCount();
+    toast('已恢复原始答案');
+  }
+
+  function restoreAnswerByRef(modId, idx) {
+    var p = pickByRef(modId, idx);
+    if (!p) return;
+    if (!confirm('恢复这道题的原始答案？你保存的修改将被删除。')) return;
+    var key = answerKey(p.m, p.it);
+    var prev = state.answers[key];
+    delete state.answers[key];
+    if (!saveAnswers()) {
+      if (prev) state.answers[key] = prev;
+      toast('恢复失败：浏览器本地存储不可用');
+      return;
+    }
+    syncAfterAnswerChange(p.m, p.it, p.i);
+    updateDataCount();
+    toast('已恢复原始答案');
+  }
+
+  function syncAfterAnswerChange(m, it, i) {
+    if (state.query && searchEl.value.trim()) {
+      renderSearch(state.query);
+    } else {
+      $$('.qcard').forEach(function (card) {
+        if (card.getAttribute('data-mod') !== m.id) return;
+        if (Number(card.getAttribute('data-idx')) !== i) return;
+        var body = $('.qbody', card);
+        if (body) body.innerHTML = renderAnswerInner(m, it, i);
+        var title = $('.qtitle', card);
+        if (title) {
+          var tag = $('.edited-tag', title);
+          if (hasCustomAnswer(m, it)) {
+            if (!tag) title.insertAdjacentHTML('beforeend', editedTagHtml(m, it));
+          } else if (tag) {
+            tag.parentNode.removeChild(tag);
+          }
+        }
+      });
+    }
+    if (state.randomPick && state.randomPick.m === m && state.randomPick.it === it) renderRandomContent();
+  }
+
+  /* ---------------- 我的答案 / 备份 ---------------- */
+  function openDataModal() {
+    updateDataCount();
+    showModal('dataModal');
+  }
+  function updateDataCount() {
+    var n = customCount();
+    var count = $('#dataCount');
+    if (count) count.textContent = n;
+    var side = $('#sideDataBtn');
+    if (side) side.textContent = n ? '💾 我的答案（' + n + '）' : '💾 我的答案';
+  }
+  function exportAnswers() {
+    var out = {};
+    MODULES.forEach(function (m) {
+      m.items.forEach(function (it) {
+        if (hasCustomAnswer(m, it)) out[answerKey(m, it)] = state.answers[answerKey(m, it)];
+      });
+    });
+    var n = Object.keys(out).length;
+    if (!n) { toast('还没有修改过答案，无需导出'); return; }
+    var payload = {
+      app: 'interview-war-room',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      answers: out
+    };
+    var d = new Date();
+    var stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '面试作战室-我的答案-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast('已导出 ' + n + ' 条修改');
+  }
+  function importAnswersFile(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var added = 0;
+      var restored = 0;
+      var backup = JSON.parse(JSON.stringify(state.answers));
+      try {
+        var data = JSON.parse(String(reader.result || ''));
+        var src = data && data.answers && typeof data.answers === 'object' ? data.answers : data;
+        if (!src || typeof src !== 'object' || Array.isArray(src)) throw new Error('bad format');
+        MODULES.forEach(function (m) {
+          m.items.forEach(function (it) {
+            var key = answerKey(m, it);
+            if (!Object.prototype.hasOwnProperty.call(src, key)) return;
+            var v = src[key];
+            var html = typeof v === 'string' ? v : (v && v.html);
+            if (typeof html !== 'string') return;
+            var clean = sanitizeHtml(html).trim();
+            if (!clean) return;
+            if (clean === String(it.a || '').trim()) {
+              if (state.answers[key]) { delete state.answers[key]; restored++; }
+              return;
+            }
+            state.answers[key] = { html: clean, updatedAt: (v && v.updatedAt) || new Date().toISOString() };
+            added++;
+          });
+        });
+      } catch (e) {
+        state.answers = backup;
+        toast('导入失败：文件不是有效的备份 JSON');
+        return;
+      }
+      if (!added && !restored) { toast('备份里没有匹配到本网站的答案'); return; }
+      if (!saveAnswers()) {
+        state.answers = backup;
+        toast('导入失败：浏览器本地存储空间不足');
+        return;
+      }
+      hideModal('dataModal');
+      updateDataCount();
+      route();
+      toast('已导入 ' + added + ' 条修改' + (restored ? '，恢复 ' + restored + ' 条原文' : ''));
+    };
+    reader.onerror = function () { toast('读取文件失败'); };
+    reader.readAsText(file, 'utf-8');
+  }
+  function clearAnswers() {
+    var n = customCount();
+    if (!n) { toast('当前没有修改过的答案'); return; }
+    if (!confirm('确定清空全部 ' + n + ' 条「我的答案」吗？所有题目将恢复原始答案，此操作不可撤销。')) return;
+    var backup = state.answers;
+    state.answers = {};
+    if (!saveAnswers()) {
+      state.answers = backup;
+      toast('清空失败：浏览器本地存储不可用');
+      return;
+    }
+    hideModal('dataModal');
+    updateDataCount();
+    route();
+    toast('已清空我的答案，全部恢复原文');
+  }
+
+  function bindAnswerUI() {
+    $('#answerInput').addEventListener('input', updateAnswerPreview);
+    $('#answerInput').addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        saveAnswerFromEditor();
+      }
+    });
+    $('#saveAnswer').addEventListener('click', saveAnswerFromEditor);
+    $('#cancelAnswer').addEventListener('click', closeEditor);
+    $('#closeAnswer').addEventListener('click', closeEditor);
+    $('#restoreAnswer').addEventListener('click', restoreFromEditor);
+    $('#answerModal').addEventListener('click', function (e) { if (e.target === $('#answerModal')) closeEditor(); });
+    $$('.editor-tools [data-snippet]').forEach(function (btn) {
+      btn.addEventListener('click', function () { insertSnippet(btn.getAttribute('data-snippet')); });
+    });
+
+    $('#dataBtn').addEventListener('click', openDataModal);
+    var sideData = $('#sideDataBtn');
+    if (sideData) sideData.addEventListener('click', openDataModal);
+    $('#closeData').addEventListener('click', function () { hideModal('dataModal'); });
+    $('#dataModal').addEventListener('click', function (e) { if (e.target === $('#dataModal')) hideModal('dataModal'); });
+    $('#dataExport').addEventListener('click', exportAnswers);
+    $('#dataImport').addEventListener('click', function () { $('#importFile').click(); });
+    $('#importFile').addEventListener('change', function () {
+      var file = this.files && this.files[0];
+      importAnswersFile(file);
+      this.value = '';
+    });
+    $('#dataClear').addEventListener('click', clearAnswers);
+    updateDataCount();
+  }
+
+  /* 卡片 / 随机弹窗里的「编辑」「恢复」按钮统一委托 */
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var edit = e.target.closest('[data-edit-mod]');
+    if (edit) {
+      e.preventDefault();
+      openEditor(edit.getAttribute('data-edit-mod'), edit.getAttribute('data-edit-idx'));
+      return;
+    }
+    var restore = e.target.closest('[data-restore-mod]');
+    if (restore) {
+      e.preventDefault();
+      restoreAnswerByRef(restore.getAttribute('data-restore-mod'), restore.getAttribute('data-restore-idx'));
+    }
+  });
 
   /* ---------------- 交互委托 ---------------- */
   $('#main').addEventListener('click', function (e) {
@@ -459,7 +879,10 @@
       searchEl.select();
     }
     if (e.key === 'Escape') {
+      var answerModal = $('#answerModal');
+      if (answerModal && answerModal.classList.contains('show')) { closeEditor(); return; }
       closeRandom();
+      hideModal('dataModal');
       if (document.activeElement === searchEl && searchEl.value) {
         searchEl.value = '';
         state.query = '';
@@ -519,6 +942,7 @@
   /* ---------------- 启动 ---------------- */
   applyTheme();
   bindQuiz();
+  bindAnswerUI();
   if (!location.hash) location.hash = '#/home';
   route();
 })();

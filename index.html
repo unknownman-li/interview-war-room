@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>面试作战室 · 本地生活点评平台</title>
 <meta name="description" content="围绕简历项目「本地生活点评平台」整理的 Java 后端八股知识库：秒杀、Redis、RabbitMQ、MySQL、并发、Spring、JVM、系统设计。">
-<link rel="stylesheet" href="assets/style.css?v=f1a1adf9dd">
+<link rel="stylesheet" href="assets/style.css?v=54b282bb3e">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 <noscript><style>.intro{display:none!important}html.intro-lock,html.intro-lock body{overflow:auto!important}.topbar,.layout,.footer{opacity:1!important;transform:none!important;pointer-events:auto!important}</style></noscript>
 </head>
@@ -77,6 +77,7 @@
 
   <div class="top-actions">
     <button class="btn ghost" id="randomBtn" title="随机抽一道题">🎲 随机抽题</button>
+    <button class="btn ghost icon-btn" id="dataBtn" title="我的答案 / 导出备份">💾</button>
     <button class="btn ghost icon-btn" id="themeBtn" title="切换主题">◐</button>
     <div class="mini-progress" title="总掌握进度">
       <svg viewBox="0 0 36 36" class="ring">
@@ -93,7 +94,8 @@
     <nav class="side-nav" id="sideNav"></nav>
     <div class="side-foot">
       <div class="side-stat"><span id="statMastered">0</span> / <span id="statTotal">0</span> 题已掌握</div>
-      <div class="side-tip">进度保存在本地浏览器，换设备不会同步。</div>
+      <div class="side-tip">进度和「我的答案」都保存在本地浏览器，换设备不会同步。</div>
+      <button class="btn small ghost side-data-btn" id="sideDataBtn">💾 我的答案</button>
       <button class="btn small ghost" id="resetBtn">重置进度</button>
     </div>
   </aside>
@@ -114,6 +116,59 @@
   </div>
 </div>
 
+<!-- ============ 答案编辑器 ============ -->
+<div class="modal editor-modal" id="answerModal" aria-hidden="true" role="dialog" aria-label="编辑答案">
+  <div class="modal-card editor-card">
+    <div class="modal-head">
+      <span class="pill">编辑答案</span>
+      <button type="button" class="btn ghost icon-btn" id="closeAnswer" title="关闭">✕</button>
+    </div>
+    <div class="editor-meta" id="answerMeta"></div>
+    <div class="editor-toolbar">
+      <span class="editor-label">答案内容 <span id="answerCount">0 字符</span></span>
+      <div class="editor-tools">
+        <button type="button" data-snippet="bold"><b>B</b> 加粗</button>
+        <button type="button" data-snippet="code">&lt;/&gt; 行内代码</button>
+        <button type="button" data-snippet="pre">▤ 代码块</button>
+        <button type="button" data-snippet="list">• 列表</button>
+        <button type="button" data-snippet="quote">❝ 提示块</button>
+      </div>
+    </div>
+    <textarea id="answerInput" class="editor-input" spellcheck="false" placeholder="支持 HTML，例如：<p>…</p><ul><li>…</li></ul>"></textarea>
+    <div class="editor-preview-label">实时预览</div>
+    <div class="qbody editor-preview" id="answerPreview"></div>
+    <div class="editor-foot">
+      <span class="editor-status" id="answerStatus"></span>
+      <div class="editor-actions">
+        <button type="button" class="btn small ghost" id="restoreAnswer">↺ 恢复原答案</button>
+        <button type="button" class="btn small ghost" id="cancelAnswer">取消</button>
+        <button type="button" class="btn small" id="saveAnswer">保存答案</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 我的答案 / 备份 ============ -->
+<div class="modal" id="dataModal" aria-hidden="true" role="dialog" aria-label="我的答案">
+  <div class="modal-card data-card">
+    <div class="modal-head">
+      <span class="pill">我的答案</span>
+      <button type="button" class="btn ghost icon-btn" id="closeData" title="关闭">✕</button>
+    </div>
+    <p class="data-desc">你修改的答案只保存在<b>当前浏览器</b>，不会上传到服务器，也不会跨设备同步。换设备或清理浏览器数据前，建议先导出备份。</p>
+    <div class="data-stat"><b id="dataCount">0</b><span>道题使用了我的答案</span></div>
+    <div class="data-actions">
+      <button type="button" class="btn" id="dataExport">⤓ 导出备份</button>
+      <button type="button" class="btn ghost" id="dataImport">⤒ 导入备份</button>
+      <button type="button" class="btn ghost danger" id="dataClear">清空我的答案</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+    <p class="data-note">导入只会覆盖备份中出现的题目；没有出现在备份里的修改会保留。</p>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <footer class="footer">
   <span>为「本地生活点评平台」项目定制 · 共 <b id="footTotal">0</b> 道八股 / 面试题</span>
   <span>建议配合简历逐条对照复习 · 答案仅供参考，面试请用自己的话讲</span>
@@ -125,7 +180,7 @@
 <script src="assets/data-4.js?v=379f5a6485"></script>
 <script src="assets/data-5.js?v=b0d149b23e"></script>
 <script src="assets/data-6.js?v=8161c59142"></script>
-<script src="assets/app.js?v=dd85d08eb4"></script>
+<script src="assets/app.js?v=11335b5a05"></script>
 <script src="assets/intro.js?v=d12b6c7c74"></script>
 </body>
 </html>

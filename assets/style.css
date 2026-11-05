@@ -480,6 +480,100 @@ mark { background: rgba(251,191,36,.28); color: inherit; border-radius: 3px; pad
 #randomBody h3 { margin: 0 0 12px; font-size: 16px; line-height: 1.6; }
 #randomBody .qbody { display: block; padding: 0; font-size: 13.5px; }
 #randomBody .meta-line { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+#randomBody .answer-tools { margin-top: 18px; }
+
+/* ============ 答案编辑 ============ */
+.edited-tag {
+  display: inline-block; margin-left: 8px; padding: 1px 7px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .4px; line-height: 1.6;
+  color: var(--accent-2); border: 1px solid rgba(34,211,238,.38);
+  background: rgba(34,211,238,.09); border-radius: 999px;
+  vertical-align: 1px; white-space: nowrap;
+}
+.answer-tools {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.answer-state { font-size: 10.5px; color: var(--muted); }
+.answer-state.mine { color: var(--accent-3); font-weight: 600; }
+.side-data-btn { margin-bottom: 6px; }
+
+.editor-modal { z-index: 130; padding: 4vh 20px 32px; }
+.editor-card {
+  width: min(1000px, 100%); max-height: 92vh;
+  display: flex; flex-direction: column; padding-bottom: 16px;
+}
+.editor-meta { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.editor-meta .pill { flex: 0 0 auto; margin-top: 2px; }
+.editor-meta .editor-q { font-size: 13.5px; font-weight: 600; line-height: 1.6; color: var(--text); }
+.editor-toolbar { margin-bottom: 8px; }
+.editor-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: var(--muted); margin-bottom: 7px;
+}
+.editor-label #answerCount { font-family: var(--mono); }
+.editor-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.editor-tools button {
+  height: 27px; padding: 0 9px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--text-dim);
+  font-size: 11px; transition: .15s;
+}
+.editor-tools button:hover { color: var(--text); border-color: rgba(124,92,255,.5); }
+.editor-input {
+  width: 100%; min-height: 220px; max-height: 38vh; resize: vertical;
+  padding: 13px 15px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--code-bg); color: #d6e2f5;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+  outline: none; tab-size: 2;
+}
+.editor-input:focus { border-color: rgba(124,92,255,.7); box-shadow: 0 0 0 4px rgba(124,92,255,.12); }
+html[data-theme="light"] .editor-input { background: #0f172a; }
+.editor-preview-label { font-size: 11px; color: var(--muted); margin: 12px 0 6px; }
+#answerPreview {
+  display: block; min-height: 76px; max-height: 210px; overflow-y: auto;
+  padding: 12px 15px; border-radius: 10px;
+  border: 1px solid var(--line-soft); background: var(--panel-2);
+  font-size: 13px;
+}
+.editor-placeholder { color: var(--muted); margin: 0; font-size: 12.5px; }
+.editor-foot {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft);
+}
+.editor-status { font-size: 11px; color: var(--muted); min-height: 16px; }
+.editor-status.error { color: var(--danger); font-weight: 600; }
+.editor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+
+/* ============ 我的答案 / 备份 ============ */
+.data-card { width: min(600px, 100%); }
+.data-desc { margin: 0 0 16px; font-size: 13px; color: var(--text-dim); }
+.data-desc b { color: var(--accent-3); }
+.data-stat {
+  display: flex; align-items: baseline; gap: 9px; padding: 16px 18px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+}
+.data-stat b {
+  font-family: var(--mono); font-size: 30px; line-height: 1; letter-spacing: -1px;
+  background: linear-gradient(100deg, #a78bfa, #22d3ee);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.data-stat span { font-size: 12px; color: var(--muted); }
+.data-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.btn.ghost.danger { color: var(--danger); border-color: rgba(251,113,133,.4); }
+.btn.ghost.danger:hover { background: rgba(251,113,133,.08); }
+.data-note { margin: 14px 0 0; font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 30px; z-index: 200;
+  transform: translate(-50%, 14px); opacity: 0; pointer-events: none;
+  padding: 10px 18px; border-radius: 999px;
+  background: #101827; color: #e8edf7; border: 1px solid rgba(124,92,255,.45);
+  box-shadow: 0 18px 46px -16px rgba(0,0,0,.7);
+  font-size: 12.5px; transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+html[data-theme="light"] .toast { background: #101827; color: #f8fafc; }
+
 
 /* ============ 响应式 ============ */
 @media (max-width: 1180px) {
@@ -924,6 +1018,20 @@ html.intro-lock .footer {
   .enter-btn { height: 52px; padding: 0 28px; font-size: 14px; letter-spacing: .14em; }
   .intro-foot { display: none; }
   .intro-hint { margin-top: 16px; }
+
+  .editor-modal { padding: 2vh 10px 18px; }
+  .editor-card { max-height: 96vh; padding: 16px 14px 14px; }
+  .editor-meta { flex-direction: column; gap: 4px; }
+  .editor-input { min-height: 150px; max-height: 28vh; }
+  #answerPreview { max-height: 150px; }
+  .editor-actions { width: 100%; }
+  .editor-actions .btn { flex: 1; justify-content: center; }
+  .editor-status { width: 100%; }
+  .answer-tools { gap: 6px; }
+  .answer-tools .answer-state { width: 100%; }
+  .data-actions .btn { flex: 1 1 100%; justify-content: center; }
+  #randomBtn { width: 36px; padding: 0; justify-content: center; font-size: 0; }
+  #randomBtn::before { content: "🎲"; font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

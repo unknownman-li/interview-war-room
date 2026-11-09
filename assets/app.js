@@ -208,9 +208,9 @@
 
     var h = '';
     h += '<section class="hero">' +
-      '<span class="eyebrow">● 简历项目 01 · 八股作战地图</span>' +
-      '<h1>把「本地生活点评平台」<br>讲成<em>一场高并发实战</em></h1>' +
-      '<p class="lead">这不是一份通用八股清单。每个知识点都从你简历上的四条 bullet 反向拆解：<b>秒杀四级防线、缓存三件套、登录滑动窗口限流、BitMap/HLL 统计</b>，再向外扩展到 Redis、RabbitMQ、MySQL、并发、JVM、Spring 的必问底层。目标只有一个：面试官问到的每一个「为什么」，你都能接住。</p>' +
+      '<span class="eyebrow">● 简历项目 01 + 02 · 八股作战地图</span>' +
+      '<h1>把「本地生活 + IoT 桥梁」<br>讲成<em>两场工程实战</em></h1>' +
+      '<p class="lead">第一个项目讲高并发交易：<b>秒杀四级防线、缓存三件套、登录滑动窗口限流、BitMap/HLL 统计</b>；第二个项目讲 IoT 数据链路：<b>多源传感器接入、MQTT 可靠上报、统一设备模型、数据质量与百万级历史查询</b>。每个知识点都从简历 bullet 反向拆解，再向外扩展到 Redis、RabbitMQ、MySQL、并发、JVM、Spring 的必问底层。目标只有一个：面试官问到的每一个「为什么」，你都能接住。</p>' +
       '<div class="hero-actions"><a class="btn" href="#/m/project">从项目总览开始 →</a>' +
       '<a class="btn ghost" href="#/quiz">先测测水平</a>' +
       '<button class="btn ghost" id="heroRandom">🎲 随机抽一题</button></div>' +
@@ -221,7 +221,7 @@
       '<div><b>' + (best ? best + ' 分' : '—') + '</b>测验最佳成绩</div>' +
       '</div></section>';
 
-    h += '<section class="section"><div class="section-head"><h2>模块地图</h2><p>按面试出现频率排序，建议 1 → 6 精学，7 → 11 查漏</p><div class="line"></div></div><div class="grid cols-3">';
+    h += '<section class="section"><div class="section-head"><h2>模块地图</h2><p>按面试出现频率排序，建议 1 → 6 精学，7 → 11 查漏，12 补 IoT，13 面试前冲刺</p><div class="line"></div></div><div class="grid cols-3">';
     MODULES.forEach(function (m, idx) {
       var c = m.items.filter(function (_, i) { return state.mastered.has(itemKey(m, i)); }).length;
       h += '<a class="mod-card" href="#/m/' + m.id + '">' +
@@ -239,7 +239,10 @@
       ['通用缓存封装 CacheClient', '穿透：空值缓存 + 互斥锁重建；击穿：逻辑过期 + 异步重建', ['redis', 'cache-design']],
       ['登录限流', 'Redis ZSet 滑动窗口 1 分钟 1 次 / 1 分钟 5 次，超限分级封禁', ['auth', 'redis']],
       ['统计方案', '签到 BitMap 月存 + BITFIELD 连续天数；UV 用 HyperLogLog', ['stats']],
-      ['技术栈与工程化', 'Spring Boot / MyBatis-Plus / MySQL / JWT / 拦截器 / 全局异常', ['mysql', 'spring', 'java']]
+      ['技术栈与工程化', 'Spring Boot / MyBatis-Plus / MySQL / JWT / 拦截器 / 全局异常', ['mysql', 'spring', 'java']],
+      ['IoT 多源接入', '10+ 桥、300+ 设备、800+ 测点；HTTP/UDP/MQTT/MySQL 适配，统一四级设备模型', ['iot']],
+      ['MQTT 可靠上报', 'QoS1 + PUBACK 超时重试 + 30s 断线重连 + 待发补发；accessToken + MD5 签名', ['iot']],
+      ['数据质量与查询', '实时窗口、时间戳去重、异常过滤、压差基点降级；百万级历史表复合索引', ['iot']]
     ];
     map.forEach(function (row) {
       h += '<div class="rm-row"><p><b>' + row[0] + '</b> · ' + row[1] + '</p><div class="rm-links">' +
@@ -255,7 +258,7 @@
       ['DAY 3', '<b>RabbitMQ + 缓存一致性</b>：可靠性三段式、幂等、积压、延迟队列', 'mq'],
       ['DAY 4', '<b>MySQL</b>：B+ 树、回表、最左前缀、MVCC、锁、慢 SQL 优化', 'mysql'],
       ['DAY 5', '<b>Java 并发 + JVM</b>：线程池、AQS、CAS、ThreadLocal、GC 与排查', 'java'],
-      ['DAY 6', '<b>Spring + 登录限流</b>：事务失效、循环依赖、JWT、四种限流算法', 'spring'],
+      ['DAY 6', '<b>Spring + 登录限流 + IoT 项目</b>：事务失效、JWT、四种限流算法，以及 MQTT 可靠上报与多源接入', 'iot'],
       ['DAY 7', '<b>统计 + 系统设计 + 模拟面试</b>：BitMap/HLL、幂等、容量评估，做 2 轮随机测验', 'stats']
     ];
     plan.forEach(function (p) {

@@ -1,0 +1,13 @@
+name = "interview-war-room-sync"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# 允许发起登录和 API 请求的站点来源（不要带路径）
+[vars]
+ALLOWED_ORIGINS = "https://unknownman-li.github.io,http://127.0.0.1:8765,http://localhost:8765"
+
+# 先执行：npx wrangler kv namespace create PROGRESS_KV
+# 把输出的 id 填到下面
+[[kv_namespaces]]
+binding = "PROGRESS_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

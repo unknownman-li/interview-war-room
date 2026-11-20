@@ -6,7 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <title>面试作战室 · 本地生活 + IoT 桥梁监测</title>
 <meta name="description" content="围绕简历项目「本地生活点评平台」和「市政桥梁健康监测平台」整理的 Java 后端 / IoT 八股知识库：秒杀、Redis、RabbitMQ、MySQL、并发、Spring、JVM、MQTT、多源设备接入与系统设计。">
-<link rel="stylesheet" href="assets/style.css?v=9b749d7b26">
+<link rel="stylesheet" href="assets/style.css?v=43bb054cbb">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 <noscript><style>.intro{display:none!important}html.intro-lock,html.intro-lock body{overflow:auto!important}.topbar,.layout,.footer{opacity:1!important;transform:none!important;pointer-events:auto!important}</style></noscript>
 </head>
@@ -185,6 +185,36 @@
   </div>
 </div>
 
+<!-- ============ AI 问答 ============ -->
+<button class="ai-fab" id="aiFab" type="button" aria-label="打开 AI 问答">
+  <span class="ai-fab-icon">💬</span><span class="ai-fab-label">问 AI</span>
+</button>
+
+<div class="ai-panel" id="aiPanel" aria-hidden="true" role="dialog" aria-label="AI 问答">
+  <div class="ai-head">
+    <div class="ai-title"><span class="ai-dot"></span>问 AI<small id="aiQuota"></small></div>
+    <div class="ai-head-actions">
+      <button type="button" class="ai-icon-btn" id="aiClear" title="清空对话">清空</button>
+      <button type="button" class="ai-icon-btn" id="aiClose" title="关闭">✕</button>
+    </div>
+  </div>
+  <div class="ai-context" id="aiContext" hidden></div>
+  <div class="ai-messages" id="aiMessages" aria-live="polite"></div>
+  <div class="ai-suggest" id="aiSuggest">
+    <button type="button" data-suggest="用面试官的口吻，就这道题继续追问我三个问题">继续追问</button>
+    <button type="button" data-suggest="用更口语、能直接说出口的方式重讲一遍">换个说法</button>
+    <button type="button" data-suggest="出两道和这个知识点相关的题考考我，先不要给答案">考考我</button>
+  </div>
+  <form class="ai-compose" id="aiForm">
+    <textarea id="aiInput" rows="1" placeholder="哪里不懂就问什么…（Enter 发送，Shift+Enter 换行）" spellcheck="false"></textarea>
+    <button type="submit" class="ai-send" id="aiSend">发送</button>
+    <button type="button" class="ai-send ghost" id="aiStop" hidden>停止</button>
+  </form>
+  <div class="ai-foot">回答只基于本站题库，可能有误；点引用可跳到原题。</div>
+</div>
+
+<button class="ai-selection" id="aiSelection" type="button" hidden>💬 问 AI</button>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <footer class="footer">
@@ -201,7 +231,8 @@
 <script src="assets/data-7.js?v=1c65084120"></script>
 <script src="assets/progress.js?v=dc5816c39f"></script>
 <script src="assets/sync-config.js?v=bff850b21c"></script>
-<script src="assets/sync.js?v=e0f29850da"></script>
+<script src="assets/sync.js?v=559d78674f"></script>
+<script src="assets/agent.js?v=a9c6a1501c"></script>
 <script src="assets/app.js?v=e357e0e4ee"></script>
 <script src="assets/intro.js?v=d12b6c7c74"></script>
 </body>

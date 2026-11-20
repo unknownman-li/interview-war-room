@@ -4,16 +4,26 @@
 
   var MODULES = (window.MODULES || []).slice().sort(function (a, b) { return a.order - b.order; });
   var QUIZ = window.QUIZ || [];
-  var LS_MASTER = 'interview.mastered.v1';
+  var LS_MASTER = 'interview.mastered.v2';
+  var LS_MASTER_LEGACY = 'interview.mastered.v1';
   var LS_THEME = 'interview.theme.v2';
+  var LS_THEME_AT = 'interview.theme.at.v1';
   var LS_BEST = 'interview.quiz.best.v1';
-  var LS_ANSWERS = 'interview.answers.v1';
+  var LS_ANSWERS = 'interview.answers.v2';
+  var LS_ANSWERS_LEGACY = 'interview.answers.v1';
+
+  var masteredStore = loadMastered();
+  var answersStore = loadAnswers();
 
   var state = {
-    mastered: loadSet(LS_MASTER),
-    answers: loadAnswers(),
+    mastered: masteredSet(masteredStore),
+    masteredMarks: masteredStore.marks,
+    masteredResetAt: masteredStore.resetAt,
+    answers: answersStore.answers,
+    answersResetAt: answersStore.resetAt,
     query: '',
     theme: localStorage.getItem(LS_THEME) || 'light',
+    themeAt: Number(localStorage.getItem(LS_THEME_AT) || 0),
     quiz: null,
     editor: null,
     randomPick: null
@@ -22,44 +32,147 @@
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
-  function loadSet(key) {
-    try {
-      var raw = JSON.parse(localStorage.getItem(key) || '[]');
-      return new Set(Array.isArray(raw) ? raw : []);
-    } catch (e) { return new Set(); }
-  }
-  function saveMastered() {
-    try { localStorage.setItem(LS_MASTER, JSON.stringify(Array.from(state.mastered))); } catch (e) {}
+  function masteredSet(store) {
+    var s = new Set();
+    var marks = (store && store.marks) || {};
+    Object.keys(marks).forEach(function (k) {
+      if (marks[k] && marks[k].done) s.add(k);
+    });
+    return s;
   }
 
-  /* ---------------- 答案覆盖（只存本地浏览器） ---------------- */
-  function loadAnswers() {
+  function loadMastered() {
+    var out = { resetAt: 0, marks: {} };
     try {
-      var raw = JSON.parse(localStorage.getItem(LS_ANSWERS) || '{}');
-      if (raw && raw.answers && typeof raw.answers === 'object') raw = raw.answers;
-      var out = {};
+      var raw = JSON.parse(localStorage.getItem(LS_MASTER) || 'null');
+      if (raw && typeof raw === 'object' && raw.marks && typeof raw.marks === 'object') {
+        out.resetAt = Number(raw.resetAt) || 0;
+        Object.keys(raw.marks).forEach(function (k) {
+          var v = raw.marks[k];
+          if (v && typeof v === 'object' && typeof v.done === 'boolean') {
+            out.marks[k] = { done: !!v.done, at: Number(v.at) || 0 };
+          }
+        });
+        return out;
+      }
+      var legacy = JSON.parse(localStorage.getItem(LS_MASTER_LEGACY) || '[]');
+      if (Array.isArray(legacy)) {
+        legacy.forEach(function (k) {
+          if (typeof k === 'string') out.marks[k] = { done: true, at: 0 };
+        });
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  function saveMastered() {
+    try {
+      localStorage.setItem(LS_MASTER, JSON.stringify({
+        resetAt: state.masteredResetAt,
+        marks: state.masteredMarks
+      }));
+    } catch (e) {}
+  }
+
+  function setMastered(key, done) {
+    state.masteredMarks[key] = { done: !!done, at: Date.now() };
+    if (done) state.mastered.add(key); else state.mastered.delete(key);
+    saveMastered();
+    scheduleSync();
+  }
+
+  function resetMastered() {
+    state.masteredResetAt = Date.now();
+    state.masteredMarks = {};
+    state.mastered.clear();
+    saveMastered();
+    scheduleSync();
+  }
+
+  /* ---------------- 答案覆盖（只存本地浏览器，登录后可同步） ---------------- */
+  function loadAnswers() {
+    var out = { resetAt: 0, answers: {} };
+    try {
+      var raw = JSON.parse(localStorage.getItem(LS_ANSWERS) || 'null');
+      if (!raw || typeof raw !== 'object') {
+        raw = JSON.parse(localStorage.getItem(LS_ANSWERS_LEGACY) || 'null');
+      }
       if (!raw || typeof raw !== 'object') return out;
-      Object.keys(raw).forEach(function (key) {
-        var v = raw[key];
+      out.resetAt = Number(raw.resetAt) || 0;
+      var src = raw.answers && typeof raw.answers === 'object' ? raw.answers : raw;
+      Object.keys(src).forEach(function (key) {
+        var v = src[key];
         if (typeof v === 'string') {
-          out[key] = { html: v, updatedAt: null };
+          out.answers[key] = { html: v, updatedAt: null };
         } else if (v && typeof v.html === 'string') {
-          out[key] = { html: v.html, updatedAt: v.updatedAt || null };
+          out.answers[key] = { html: v.html, updatedAt: v.updatedAt || null };
         }
       });
-      return out;
-    } catch (e) { return {}; }
+    } catch (e) {}
+    return out;
   }
 
   function saveAnswers() {
     try {
       localStorage.setItem(LS_ANSWERS, JSON.stringify({
-        version: 1,
+        version: 2,
         updatedAt: new Date().toISOString(),
+        resetAt: state.answersResetAt,
         answers: state.answers
       }));
       return true;
     } catch (e) { return false; }
+  }
+
+  /* ---------------- 进度快照 / 合并 ---------------- */
+  function buildProgress() {
+    return {
+      version: 2,
+      updatedAt: new Date().toISOString(),
+      masteredResetAt: state.masteredResetAt,
+      mastered: state.masteredMarks,
+      answersResetAt: state.answersResetAt,
+      answers: state.answers,
+      quizBest: Number(localStorage.getItem(LS_BEST) || 0),
+      theme: state.theme,
+      themeUpdatedAt: state.themeAt
+    };
+  }
+
+  function applyProgress(p) {
+    var normalized = window.Progress ? window.Progress.normalize(p) : p;
+    state.masteredMarks = normalized.mastered || {};
+    state.masteredResetAt = Number(normalized.masteredResetAt) || 0;
+    state.mastered = masteredSet({ marks: state.masteredMarks });
+    state.answers = normalized.answers || {};
+    state.answersResetAt = Number(normalized.answersResetAt) || 0;
+
+    if (normalized.quizBest > Number(localStorage.getItem(LS_BEST) || 0)) {
+      localStorage.setItem(LS_BEST, String(normalized.quizBest));
+    }
+    if (normalized.theme === 'light' || normalized.theme === 'dark') {
+      state.theme = normalized.theme;
+      state.themeAt = Number(normalized.themeUpdatedAt) || state.themeAt;
+      localStorage.setItem(LS_THEME, state.theme);
+      localStorage.setItem(LS_THEME_AT, String(state.themeAt));
+    }
+
+    saveMastered();
+    saveAnswers();
+    updateDataCount();
+    applyTheme();
+    updateProgress();
+    refreshAfterSync();
+  }
+
+  function refreshAfterSync() {
+    var r = parseHash();
+    if (r.view === 'quiz') return;
+    route();
+  }
+
+  function scheduleSync() {
+    if (window.Sync && typeof window.Sync.schedule === 'function') window.Sync.schedule();
   }
 
   /* 用户答案只在本机渲染，仍然做一层过滤，避免导入的备份里带脚本 */
@@ -143,8 +256,11 @@
   }
   $('#themeBtn').addEventListener('click', function () {
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    state.themeAt = Date.now();
     localStorage.setItem(LS_THEME, state.theme);
+    localStorage.setItem(LS_THEME_AT, String(state.themeAt));
     applyTheme();
+    scheduleSync();
   });
 
   /* ---------------- 进度 ---------------- */
@@ -403,7 +519,7 @@
     if (qz.idx >= qz.list.length) {
       var score = Math.round((qz.correct / qz.list.length) * 100);
       var best = Number(localStorage.getItem(LS_BEST) || 0);
-      if (score > best) { localStorage.setItem(LS_BEST, String(score)); best = score; }
+      if (score > best) { localStorage.setItem(LS_BEST, String(score)); best = score; scheduleSync(); }
       var comment = score >= 90 ? '稳了，这就是能拿 offer 的手感。' : score >= 70 ? '主线已经通了，把错题对应模块再刷一遍。' : score >= 50 ? '基础有了，但「为什么」还没讲透，建议回炉。' : '别慌，先按首页 7 天计划走一轮再来测。';
       $('#main').innerHTML = '<div class="quiz-shell"><div class="quiz-card result">' +
         '<div class="score-big">' + score + '</div>' +
@@ -597,7 +713,7 @@
     var prev = state.answers[key];
 
     if (clean === String(it.a || '').trim()) {
-      delete state.answers[key];
+      state.answers[key] = { html: '', updatedAt: new Date().toISOString() };
     } else {
       state.answers[key] = { html: clean, updatedAt: new Date().toISOString() };
     }
@@ -609,6 +725,7 @@
     closeEditor();
     syncAfterAnswerChange(m, it, i);
     updateDataCount();
+    scheduleSync();
     toast(hasCustomAnswer(m, it) ? '答案已保存到本地' : '内容与原始答案一致，已恢复原文');
   }
 
@@ -621,7 +738,7 @@
     var i = p.i;
     var key = answerKey(m, it);
     var prev = state.answers[key];
-    delete state.answers[key];
+    state.answers[key] = { html: '', updatedAt: new Date().toISOString() };
     if (!saveAnswers()) {
       if (prev) state.answers[key] = prev;
       setEditorStatus('恢复失败：浏览器本地存储不可用。', true);
@@ -630,6 +747,7 @@
     closeEditor();
     syncAfterAnswerChange(m, it, i);
     updateDataCount();
+    scheduleSync();
     toast('已恢复原始答案');
   }
 
@@ -639,7 +757,7 @@
     if (!confirm('恢复这道题的原始答案？你保存的修改将被删除。')) return;
     var key = answerKey(p.m, p.it);
     var prev = state.answers[key];
-    delete state.answers[key];
+    state.answers[key] = { html: '', updatedAt: new Date().toISOString() };
     if (!saveAnswers()) {
       if (prev) state.answers[key] = prev;
       toast('恢复失败：浏览器本地存储不可用');
@@ -647,6 +765,7 @@
     }
     syncAfterAnswerChange(p.m, p.it, p.i);
     updateDataCount();
+    scheduleSync();
     toast('已恢复原始答案');
   }
 
@@ -682,23 +801,22 @@
     var n = customCount();
     var count = $('#dataCount');
     if (count) count.textContent = n;
+    var mastered = $('#dataMastered');
+    if (mastered) mastered.textContent = state.mastered.size;
     var side = $('#sideDataBtn');
     if (side) side.textContent = n ? '💾 我的答案（' + n + '）' : '💾 我的答案';
   }
   function exportAnswers() {
-    var out = {};
-    MODULES.forEach(function (m) {
-      m.items.forEach(function (it) {
-        if (hasCustomAnswer(m, it)) out[answerKey(m, it)] = state.answers[answerKey(m, it)];
-      });
-    });
-    var n = Object.keys(out).length;
-    if (!n) { toast('还没有修改过答案，无需导出'); return; }
+    var n = customCount();
+    if (!state.mastered.size && !n && !Number(localStorage.getItem(LS_BEST) || 0)) {
+      toast('还没有可导出的学习进度');
+      return;
+    }
     var payload = {
       app: 'interview-war-room',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      answers: out
+      progress: buildProgress()
     };
     var d = new Date();
     var stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
@@ -706,56 +824,72 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = '面试作战室-我的答案-' + stamp + '.json';
+    a.download = '面试作战室-进度-' + stamp + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    toast('已导出 ' + n + ' 条修改');
+    toast('已导出：' + state.mastered.size + ' 道已掌握 / ' + n + ' 条答案');
   }
   function importAnswersFile(file) {
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function () {
-      var added = 0;
-      var restored = 0;
-      var backup = JSON.parse(JSON.stringify(state.answers));
+      var incoming;
       try {
         var data = JSON.parse(String(reader.result || ''));
-        var src = data && data.answers && typeof data.answers === 'object' ? data.answers : data;
-        if (!src || typeof src !== 'object' || Array.isArray(src)) throw new Error('bad format');
-        MODULES.forEach(function (m) {
-          m.items.forEach(function (it) {
-            var key = answerKey(m, it);
-            if (!Object.prototype.hasOwnProperty.call(src, key)) return;
-            var v = src[key];
-            var html = typeof v === 'string' ? v : (v && v.html);
-            if (typeof html !== 'string') return;
-            var clean = sanitizeHtml(html).trim();
-            if (!clean) return;
-            if (clean === String(it.a || '').trim()) {
-              if (state.answers[key]) { delete state.answers[key]; restored++; }
-              return;
-            }
-            state.answers[key] = { html: clean, updatedAt: (v && v.updatedAt) || new Date().toISOString() };
-            added++;
-          });
-        });
+        incoming = data && data.progress ? data.progress : data;
+        if (incoming && !incoming.answers && data && data.answers) incoming = { answers: data.answers };
+        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) throw new Error('bad format');
       } catch (e) {
-        state.answers = backup;
-        toast('导入失败：文件不是有效的备份 JSON');
+        toast('导入失败：文件不是有效的进度 JSON');
         return;
       }
-      if (!added && !restored) { toast('备份里没有匹配到本网站的答案'); return; }
-      if (!saveAnswers()) {
-        state.answers = backup;
-        toast('导入失败：浏览器本地存储空间不足');
-        return;
-      }
+
+      var normalized = window.Progress ? window.Progress.normalize(incoming) : incoming;
+      var clean = {
+        masteredResetAt: normalized.masteredResetAt,
+        answersResetAt: normalized.answersResetAt,
+        quizBest: normalized.quizBest,
+        theme: normalized.theme,
+        themeUpdatedAt: normalized.themeUpdatedAt,
+        mastered: {},
+        answers: {}
+      };
+      var validItems = {};
+      var validKeys = {};
+      MODULES.forEach(function (m) {
+        m.items.forEach(function (it, i) {
+          validItems[answerKey(m, it)] = it;
+          validKeys[itemKey(m, i)] = 1;
+        });
+      });
+
+      Object.keys(normalized.mastered || {}).forEach(function (k) {
+        if (validKeys[k]) clean.mastered[k] = normalized.mastered[k];
+      });
+      Object.keys(normalized.answers || {}).forEach(function (k) {
+        var it = validItems[k];
+        if (!it) return;
+        var v = normalized.answers[k];
+        var html = typeof v === 'string' ? v : (v && v.html);
+        if (typeof html !== 'string') return;
+        var safe = sanitizeHtml(html).trim();
+        if (safe && safe === String(it.a || '').trim()) safe = '';
+        clean.answers[k] = { html: safe, updatedAt: (v && v.updatedAt) || new Date().toISOString() };
+      });
+
+      var merged = window.Progress ? window.Progress.merge(buildProgress(), clean) : clean;
+      applyProgress(merged);
       hideModal('dataModal');
-      updateDataCount();
-      route();
-      toast('已导入 ' + added + ' 条修改' + (restored ? '，恢复 ' + restored + ' 条原文' : ''));
+      var added = Object.keys(clean.answers).length;
+      var marks = Object.keys(clean.mastered).length;
+      if (!added && !marks && !normalized.quizBest) {
+        toast('备份里没有匹配到本网站的进度');
+        return;
+      }
+      scheduleSync();
+      toast('已导入并合并：' + marks + ' 条掌握标记 / ' + added + ' 条答案');
     };
     reader.onerror = function () { toast('读取文件失败'); };
     reader.readAsText(file, 'utf-8');
@@ -765,16 +899,157 @@
     if (!n) { toast('当前没有修改过的答案'); return; }
     if (!confirm('确定清空全部 ' + n + ' 条「我的答案」吗？所有题目将恢复原始答案，此操作不可撤销。')) return;
     var backup = state.answers;
+    var backupReset = state.answersResetAt;
     state.answers = {};
+    state.answersResetAt = Date.now();
     if (!saveAnswers()) {
       state.answers = backup;
+      state.answersResetAt = backupReset;
       toast('清空失败：浏览器本地存储不可用');
       return;
     }
     hideModal('dataModal');
     updateDataCount();
     route();
+    scheduleSync();
     toast('已清空我的答案，全部恢复原文');
+  }
+
+  /* ---------------- 云同步 UI ---------------- */
+  function syncSnapshot() {
+    return window.Sync ? window.Sync.getState() : {
+      status: 'disabled', configured: false, user: null, lastSyncAt: 0, error: ''
+    };
+  }
+
+  function syncStatusText(s) {
+    if (s.status === 'disabled') return '未配置';
+    if (s.status === 'logged-out') return '未登录';
+    if (s.status === 'connecting') return '连接中';
+    if (s.status === 'syncing') return '同步中';
+    if (s.status === 'synced') return '已同步';
+    if (s.status === 'error') return '同步失败';
+    return s.status || '未知';
+  }
+
+  function formatSyncTime(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function renderSyncStatus(s) {
+    s = s || syncSnapshot();
+    var btn = $('#syncBtn');
+    if (btn) {
+      btn.classList.toggle('sync-on', !!s.user);
+      btn.title = '云同步：' + syncStatusText(s) + (s.user ? '（@' + s.user.login + '）' : '');
+    }
+    var side = $('#sideSyncBtn');
+    if (side) side.textContent = s.user ? ('☁ 云同步 · ' + syncStatusText(s)) : '☁ 云同步';
+    if ($('#syncModal') && $('#syncModal').classList.contains('show')) renderSyncBody(s);
+  }
+
+  function openSyncModal() {
+    renderSyncBody();
+    showModal('syncModal');
+  }
+
+  function renderSyncBody(s) {
+    s = s || syncSnapshot();
+    var body = $('#syncBody');
+    if (!body) return;
+
+    if (!s.configured) {
+      body.innerHTML =
+        '<p class="sync-desc">云同步还没有配置。先部署项目里的 <code>sync-worker</code>，再把 Worker 地址填到这里。地址只保存在当前浏览器。</p>' +
+        '<div class="sync-config">' +
+        '<input id="syncWorkerInput" type="url" placeholder="https://interview-war-room-sync.xxx.workers.dev" autocomplete="off" spellcheck="false">' +
+        '<button type="button" class="btn small" id="syncWorkerSave">保存并连接</button>' +
+        '</div>' +
+        '<p class="sync-note">部署步骤见 <code>sync-worker/README.md</code>：创建 GitHub OAuth App、绑定 Cloudflare KV、配置三个 Secret，然后 <code>npx wrangler deploy</code>。</p>';
+      return;
+    }
+
+    if (!s.user) {
+      body.innerHTML =
+        '<div class="sync-head"><span class="sync-avatar">☁</span><div><b>云同步已就绪</b><p>使用 GitHub 登录后，已学习、答案和测验成绩会在设备之间自动合并。</p></div></div>' +
+        '<div class="sync-actions">' +
+        '<button type="button" class="btn" id="syncLogin">使用 GitHub 登录</button>' +
+        '<button type="button" class="btn ghost small" id="syncChangeWorker">更改服务地址</button>' +
+        '</div>' +
+        (s.error ? '<p class="sync-error">' + esc(s.error) + '</p>' : '') +
+        '<p class="sync-note">只申请 GitHub 的 <code>read:user</code> 权限，不读取仓库。进度保存在你自己的 Cloudflare KV 中。</p>';
+      return;
+    }
+
+    var avatar = s.user.avatar
+      ? '<img class="sync-avatar-img" src="' + esc(s.user.avatar) + '" alt="GitHub 头像">'
+      : '<span class="sync-avatar">☁</span>';
+    body.innerHTML =
+      '<div class="sync-head">' + avatar + '<div><b>@' + esc(s.user.login || '') + '</b><p>' +
+      syncStatusText(s) + (s.lastSyncAt ? ' · ' + formatSyncTime(s.lastSyncAt) : '') +
+      '</p></div></div>' +
+      (s.error ? '<p class="sync-error">' + esc(s.error) + '</p>' : '') +
+      '<div class="sync-actions">' +
+      '<button type="button" class="btn" id="syncNow">立即同步</button>' +
+      '<button type="button" class="btn ghost" id="syncLogout">退出登录</button>' +
+      '<button type="button" class="btn ghost small" id="syncChangeWorker">更改服务地址</button>' +
+      '</div>' +
+      '<p class="sync-note">本地修改会自动推送；换设备打开时会自动拉取并合并。冲突按每条记录的更新时间取较新的一份。</p>';
+  }
+
+  function saveWorkerFromInput() {
+    var input = $('#syncWorkerInput');
+    if (!input || !window.Sync) return;
+    try {
+      Sync.setWorkerUrl(input.value);
+      renderSyncBody();
+      toast('同步地址已保存，请登录 GitHub');
+    } catch (e) {
+      toast(e.message || '地址格式不正确');
+    }
+  }
+
+  function bindSyncUI() {
+    var btn = $('#syncBtn');
+    if (btn) btn.addEventListener('click', openSyncModal);
+    var side = $('#sideSyncBtn');
+    if (side) side.addEventListener('click', openSyncModal);
+
+    var close = $('#closeSync');
+    if (close) close.addEventListener('click', function () { hideModal('syncModal'); });
+    var modal = $('#syncModal');
+    if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) hideModal('syncModal'); });
+
+    var body = $('#syncBody');
+    if (body) {
+      body.addEventListener('click', function (e) {
+        var t = e.target.closest('button');
+        if (!t) return;
+        if (t.id === 'syncLogin') { Sync.login(); return; }
+        if (t.id === 'syncNow') { Sync.syncNow(); return; }
+        if (t.id === 'syncWorkerSave') { saveWorkerFromInput(); return; }
+        if (t.id === 'syncChangeWorker') {
+          if (!confirm('更改服务地址会退出当前登录，本地进度会保留。继续？')) return;
+          Sync.setWorkerUrl('');
+          renderSyncBody();
+          return;
+        }
+        if (t.id === 'syncLogout') {
+          if (!confirm('退出云同步？本地进度会保留。')) return;
+          Sync.logout();
+        }
+      });
+      body.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target && e.target.id === 'syncWorkerInput') {
+          e.preventDefault();
+          saveWorkerFromInput();
+        }
+      });
+    }
+    renderSyncStatus();
   }
 
   function bindAnswerUI() {
@@ -807,6 +1082,8 @@
       this.value = '';
     });
     $('#dataClear').addEventListener('click', clearAnswers);
+    var dataSync = $('#dataSync');
+    if (dataSync) dataSync.addEventListener('click', openSyncModal);
     updateDataCount();
   }
 
@@ -833,8 +1110,7 @@
       e.preventDefault();
       e.stopPropagation();
       var key = mb.getAttribute('data-master');
-      if (state.mastered.has(key)) state.mastered.delete(key); else state.mastered.add(key);
-      saveMastered();
+      setMastered(key, !state.mastered.has(key));
       var card = mb.closest('.qcard');
       if (card) {
         card.classList.toggle('mastered', state.mastered.has(key));
@@ -886,6 +1162,7 @@
       if (answerModal && answerModal.classList.contains('show')) { closeEditor(); return; }
       closeRandom();
       hideModal('dataModal');
+      hideModal('syncModal');
       if (document.activeElement === searchEl && searchEl.value) {
         searchEl.value = '';
         state.query = '';
@@ -897,8 +1174,7 @@
 
   $('#resetBtn').addEventListener('click', function () {
     if (!confirm('确定清空所有「已掌握」标记吗？此操作不可撤销。')) return;
-    state.mastered.clear();
-    saveMastered();
+    resetMastered();
     route();
   });
 
@@ -946,6 +1222,14 @@
   applyTheme();
   bindQuiz();
   bindAnswerUI();
+  bindSyncUI();
   if (!location.hash) location.hash = '#/home';
   route();
+  if (window.Sync) {
+    Sync.init({
+      getLocal: buildProgress,
+      applyRemote: applyProgress,
+      onStatus: renderSyncStatus
+    }).catch(function () {});
+  }
 })();

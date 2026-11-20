@@ -1223,6 +1223,9 @@
   bindQuiz();
   bindAnswerUI();
   bindSyncUI();
+  /* 把旧版 v1 数据落成 v2，避免两套 key 并存 */
+  saveMastered();
+  saveAnswers();
   if (!location.hash) location.hash = '#/home';
   route();
   if (window.Sync) {

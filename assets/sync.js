@@ -265,6 +265,7 @@
     syncNow: syncNow,
     schedule: schedule,
     setWorkerUrl: setWorkerUrl,
-    getState: stateSnapshot
+    getState: stateSnapshot,
+    getToken: function () { return token; }
   };
 })();

@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
 <title>面试作战室 · 本地生活 + IoT 桥梁监测</title>
 <meta name="description" content="围绕简历项目「本地生活点评平台」和「市政桥梁健康监测平台」整理的 Java 后端 / IoT 八股知识库：秒杀、Redis、RabbitMQ、MySQL、并发、Spring、JVM、MQTT、多源设备接入与系统设计。">
-<link rel="stylesheet" href="assets/style.css?v=54b282bb3e">
+<link rel="stylesheet" href="assets/style.css?v=9b749d7b26">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 <noscript><style>.intro{display:none!important}html.intro-lock,html.intro-lock body{overflow:auto!important}.topbar,.layout,.footer{opacity:1!important;transform:none!important;pointer-events:auto!important}</style></noscript>
 </head>
@@ -77,7 +78,8 @@
 
   <div class="top-actions">
     <button class="btn ghost" id="randomBtn" title="随机抽一道题">🎲 随机抽题</button>
-    <button class="btn ghost icon-btn" id="dataBtn" title="我的答案 / 导出备份">💾</button>
+    <button class="btn ghost icon-btn" id="syncBtn" title="云同步">☁</button>
+    <button class="btn ghost icon-btn" id="dataBtn" title="我的答案 / 导出进度">💾</button>
     <button class="btn ghost icon-btn" id="themeBtn" title="切换主题">◐</button>
     <div class="mini-progress" title="总掌握进度">
       <svg viewBox="0 0 36 36" class="ring">
@@ -94,8 +96,9 @@
     <nav class="side-nav" id="sideNav"></nav>
     <div class="side-foot">
       <div class="side-stat"><span id="statMastered">0</span> / <span id="statTotal">0</span> 题已掌握</div>
-      <div class="side-tip">进度和「我的答案」都保存在本地浏览器，换设备不会同步。</div>
+      <div class="side-tip">进度默认保存在本地浏览器；登录云同步后可跨设备合并。</div>
       <button class="btn small ghost side-data-btn" id="sideDataBtn">💾 我的答案</button>
+      <button class="btn small ghost side-data-btn" id="sideSyncBtn">☁ 云同步</button>
       <button class="btn small ghost" id="resetBtn">重置进度</button>
     </div>
   </aside>
@@ -155,15 +158,30 @@
       <span class="pill">我的答案</span>
       <button type="button" class="btn ghost icon-btn" id="closeData" title="关闭">✕</button>
     </div>
-    <p class="data-desc">你修改的答案只保存在<b>当前浏览器</b>，不会上传到服务器，也不会跨设备同步。换设备或清理浏览器数据前，建议先导出备份。</p>
-    <div class="data-stat"><b id="dataCount">0</b><span>道题使用了我的答案</span></div>
+    <p class="data-desc">答案、已学习进度和测验最高分默认只保存在<b>当前浏览器</b>。换设备前可以导出备份，或登录云同步自动合并。</p>
+    <div class="data-stats">
+      <div class="data-stat"><b id="dataMastered">0</b><span>道已掌握</span></div>
+      <div class="data-stat"><b id="dataCount">0</b><span>道使用了我的答案</span></div>
+    </div>
     <div class="data-actions">
-      <button type="button" class="btn" id="dataExport">⤓ 导出备份</button>
-      <button type="button" class="btn ghost" id="dataImport">⤒ 导入备份</button>
+      <button type="button" class="btn" id="dataExport">⤓ 导出进度</button>
+      <button type="button" class="btn ghost" id="dataImport">⤒ 导入进度</button>
+      <button type="button" class="btn ghost" id="dataSync">☁ 云同步</button>
       <button type="button" class="btn ghost danger" id="dataClear">清空我的答案</button>
     </div>
     <input type="file" id="importFile" accept="application/json,.json" hidden>
-    <p class="data-note">导入只会覆盖备份中出现的题目；没有出现在备份里的修改会保留。</p>
+    <p class="data-note">导入会与当前进度合并；同一道题以更新时间较新的记录为准。云同步需要先部署 <code>sync-worker</code>。</p>
+  </div>
+</div>
+
+<!-- ============ 云同步 ============ -->
+<div class="modal" id="syncModal" aria-hidden="true" role="dialog" aria-label="云同步">
+  <div class="modal-card sync-card">
+    <div class="modal-head">
+      <span class="pill">云同步</span>
+      <button type="button" class="btn ghost icon-btn" id="closeSync" title="关闭">✕</button>
+    </div>
+    <div id="syncBody" class="sync-body"></div>
   </div>
 </div>
 
@@ -181,7 +199,10 @@
 <script src="assets/data-5.js?v=b0d149b23e"></script>
 <script src="assets/data-6.js?v=3e0ec24d38"></script>
 <script src="assets/data-7.js?v=1c65084120"></script>
-<script src="assets/app.js?v=644951c1b8"></script>
+<script src="assets/progress.js?v=dc5816c39f"></script>
+<script src="assets/sync-config.js?v=bff850b21c"></script>
+<script src="assets/sync.js?v=e0f29850da"></script>
+<script src="assets/app.js?v=448b933375"></script>
 <script src="assets/intro.js?v=d12b6c7c74"></script>
 </body>
 </html>

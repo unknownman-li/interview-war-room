@@ -75,7 +75,41 @@ https://interview-war-room-sync.your-name.workers.dev
 
 如果不是 `configured:true`，检查三个 Secret 和 KV 绑定。
 
-## 5. 在站点里启用
+## 5. AI 问答（可选）
+
+同一个 Worker 也提供 `/api/chat`，给站点的「问 AI」用。只需要再加一个 Secret：
+
+```bash
+npx wrangler secret put DEEPSEEK_API_KEY
+```
+
+可选变量（写在 `wrangler.toml` 的 `[vars]`）：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `DEEPSEEK_BASE` | `https://api.deepseek.com` | 任何 OpenAI 兼容端点 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | 模型名 |
+| `CHAT_DAILY_LIMIT` | `30` | 每个 GitHub 用户每天次数 |
+
+行为：
+
+- 只读，不碰学习进度；回答只基于题库检索出的 5 道题，要求带 `[编号]` 引用
+- 流式 SSE 返回，首字延迟主要取决于模型
+- 超过每日次数返回 429；未配置 Key 返回 503 `ai_not_configured`
+- 修改题库后重新生成检索索引：
+
+```bash
+npm run index      # 等价于 node scripts/build-index.cjs
+npx wrangler deploy
+```
+
+`/health` 会多返回一个 `ai` 字段，确认 Key 是否生效：
+
+```json
+{"ok":true,"configured":true,"ai":true}
+```
+
+## 6. 在站点里启用
 
 打开站点 → 点顶栏的 `☁` → 把 Worker 地址填进去 → 保存并连接 → 使用 GitHub 登录。
 
@@ -96,6 +130,7 @@ npx wrangler dev
 ## 数据与限制
 
 - 进度是一个 JSON blob，前端会做字段校验、答案 HTML 过滤。
-- Worker 限制单次请求体 1 MB。
+- Worker 限制单次请求体 1 MB；`/api/chat` 另有 64 KB 限制、单条 4k 字符、最多 8 轮上下文。
 - KV 免费额度足够个人使用；写入是最终一致的，极短时间内多设备同时写可能产生一次冲突，前端会用 `baseRevision` 检测并合并重试。
+- AI 配额计数也在 KV，最终一致意味着并发请求可能略微超出上限，个人使用无需在意。
 - 退出登录只清除当前浏览器的 token；token 本身 30 天过期。需要立即失效可以更换 `SESSION_SECRET`（会让所有设备重新登录）。

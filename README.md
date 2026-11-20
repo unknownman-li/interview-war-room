@@ -66,6 +66,7 @@ node ..\.deploy\deploy-github.cjs
 - **编辑答案**：每道题的答案都可以改成自己的版本，支持 HTML、实时预览、恢复原文
 - **进度备份**：右上角 💾 可导出 / 导入完整进度 JSON（已掌握、答案、测验最高分、主题）
 - **云同步**：可选。部署 `sync-worker` 后用 GitHub 登录，进度自动跨设备合并；不配置时完全本地运行
+- **问 AI**：右下角悬浮入口，随时提问；选中一段文字也能「问 AI」。回答只基于本站题库并带引用，点击可跳回原题
 - **进度可视化**：顶部进度环 + 每个模块的进度条
 - **随机抽题**：面试前抽一道，模拟被突然提问
 - **随机测验**：每轮 10 题，即时判分 + 解析 + 错题回顾 + 历史最佳
@@ -110,20 +111,54 @@ npx wrangler deploy
 
 安全边界：前端只拿到签名后的会话 token，Worker 用 `SESSION_SECRET` 校验，GitHub Client Secret 不进入浏览器；每个 GitHub 用户只能读写自己 key 下的进度。
 
+## AI 问答
+
+右下角的「问 AI」是全局入口：
+
+- 任意页面都能打开，自由提问
+- 停在某道题上时自动带上这道题作为上下文
+- 选中一段文字，会浮出「问 AI」按钮，只问选中的内容
+- 回答流式输出，带 `[1]` 行内引用和出处卡片，点击跳回原题
+- 只读：不会改你的进度、答案或测验成绩
+
+启用方式和云同步共用同一个 Worker，只多一个 Secret：
+
+```bash
+cd sync-worker
+npx wrangler secret put DEEPSEEK_API_KEY
+npx wrangler deploy
+```
+
+可选变量：`DEEPSEEK_BASE`（默认 `https://api.deepseek.com`）、`DEEPSEEK_MODEL`（默认 `deepseek-chat`）、`CHAT_DAILY_LIMIT`（默认每人每天 30 次）。
+
+检索索引在构建期生成，改了题库要重新生成并部署：
+
+```bash
+cd sync-worker
+npm run index
+npx wrangler deploy
+```
+
+`/health` 返回 `"ai": true` 说明 Key 已生效。费用按量计，一次问答大约 ¥0.004。
+
 ## 目录结构
 
 ```
 interview-notes/
 ├── index.html
 ├── 打开八股网站.bat
-├── sync-worker/        # 可选：Cloudflare Worker 云同步后端
-│   ├── src/index.js
+├── sync-worker/        # 可选：Cloudflare Worker（云同步 + AI 问答）
+│   ├── src/index.js    # 路由：OAuth / 进度 / chat
+│   ├── src/chat.js     # AI 问答：检索、配额、流式转发
+│   ├── src/search-index.js  # 构建期生成的题库索引
+│   ├── scripts/build-index.cjs
 │   ├── wrangler.toml
 │   └── README.md
 └── assets/
     ├── style.css       # 全部样式（启动页、深色/浅色、响应式）
     ├── intro.js        # 启动页粒子动画、数字滚动、进入逻辑
     ├── app.js          # 路由、搜索、进度、测验、备份逻辑
+    ├── agent.js        # AI 问答抽屉、流式渲染、引用跳转
     ├── progress.js     # 进度结构归一化与合并
     ├── sync.js         # 云同步客户端（登录、拉取、推送、冲突重试）
     ├── sync-config.js  # Worker 地址（留空 = 纯本地）
@@ -161,6 +196,14 @@ interview-notes/
   explain: '解析',
   modTitle: '秒杀系统设计'
 }
+```
+
+如果启用了 AI 问答，加完题后要在 `sync-worker` 目录重新生成索引并部署 Worker：
+
+```bash
+cd sync-worker
+npm run index
+npx wrangler deploy
 ```
 
 ## 部署到线上
